@@ -2,19 +2,19 @@ import type { TransportConfig } from "../transport.js";
 import { doRaw } from "../transport.js";
 import type { CallOptions, ConsentApproval } from "../types.js";
 
-const PATH_GATEWAY = "/api-gateway";
+const PATH_V2 = "/api-gateway/v2";
 
-/** ConsentService handles custom consent approvals (API-key-authenticated only). */
+/** ConsentService handles consent approvals (API-key-authenticated only). */
 export class ConsentService {
   /** @internal */
   constructor(private readonly cfg: TransportConfig) {}
 
-  /** Approve approves a custom consent for a user. */
+  /** Approve approves a consent for a user. */
   async approve(consentId: string, userId: string, opts?: CallOptions): Promise<void> {
     await doRaw<void>(
       this.cfg,
       "POST",
-      `${PATH_GATEWAY}/custom-consents/${consentId}/approve/${userId}`,
+      `${PATH_V2}/consents/${consentId}/approve/${userId}`,
       opts,
     );
   }
@@ -24,7 +24,7 @@ export class ConsentService {
     return doRaw<ConsentApproval[]>(
       this.cfg,
       "GET",
-      `${PATH_GATEWAY}/custom-consents/my-approvals/${userId}`,
+      `${PATH_V2}/consents/my-approvals/${userId}`,
       opts,
     );
   }

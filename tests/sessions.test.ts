@@ -5,7 +5,7 @@ import * as http from "node:http";
 import { BiometryClient } from "../src/client.js";
 
 // ---------------------------------------------------------------------------
-// Test helper
+// Test helpers
 // ---------------------------------------------------------------------------
 
 function createTestServer(
@@ -43,12 +43,12 @@ describe("SessionService", () => {
     server = null;
   });
 
-  it("start() sends POST to /sessions/start and returns session ID", async () => {
+  it("start() sends POST to /v2/sessions and returns session ID", async () => {
     const s = await createTestServer((req, res) => {
       assert.equal(req.method, "POST");
-      assert.ok(req.url?.endsWith("/api-gateway/sessions/start"));
+      assert.ok(req.url?.endsWith("/api-gateway/v2/sessions"));
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ data: "session-abc" }));
+      res.end(JSON.stringify({ data: { session_id: "session-abc" }, meta: {} }));
     });
     server = s.server;
 
@@ -57,16 +57,16 @@ describe("SessionService", () => {
     assert.equal(id, "session-abc");
   });
 
-  it("end() sends POST to /sessions/end/:id with body", async () => {
+  it("end() sends POST to /v2/sessions/:id/end with body", async () => {
     const s = await createTestServer(async (req, res) => {
       assert.equal(req.method, "POST");
-      assert.ok(req.url?.endsWith("/api-gateway/sessions/end/sess-123"));
+      assert.ok(req.url?.endsWith("/api-gateway/v2/sessions/sess-123/end"));
 
       const body = JSON.parse(await readBody(req));
       assert.equal(body.phone_number, "+1234567890");
 
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "ok" }));
+      res.end(JSON.stringify({ meta: { message: "ok" } }));
     });
     server = s.server;
 
@@ -77,7 +77,7 @@ describe("SessionService", () => {
   it("end() works without a request body", async () => {
     const s = await createTestServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "ok" }));
+      res.end(JSON.stringify({ meta: { message: "ok" } }));
     });
     server = s.server;
 

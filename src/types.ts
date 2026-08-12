@@ -3,27 +3,27 @@
 // ---------------------------------------------------------------------------
 
 import type { Readable } from "node:stream";
+import type { VerificationServiceName } from "./v2.js";
 
 /** Options that can be set on the BiometryClient at construction time. */
 export interface ClientOptions {
   /** Override the default base URL (https://api.biometrysolutions.com). */
   baseURL?: string;
-  /** Default X-User-Fullname sent with every request. */
-  userFullname?: string;
   /** Override the default User-Agent header. */
   userAgent?: string;
   /** HTTP request timeout in milliseconds (default 30 000). */
   timeoutMs?: number;
 }
 
-/** Per-request header overrides passed to any service method. */
+/**
+ * Per-request header overrides passed to any service method.
+ *
+ * Note: identity, session, trigger, document-provider, and prefilled-video
+ * selection are NOT headers in API v2 — they are fields of the per-call input
+ * objects (carried in the JSON `request` part). The options below only cover
+ * request-metadata headers the gateway still reads directly.
+ */
 export interface CallOptions {
-  /** Override X-User-Fullname for this request. */
-  fullname?: string;
-  /** X-Session-ID header. */
-  sessionId?: string;
-  /** X-Action-Trigger header. */
-  actionTrigger?: string;
   /** X-Device-Info header (JSON string). */
   deviceInfo?: string;
   /** X-Geo-Location header (JSON string). */
@@ -34,10 +34,6 @@ export interface CallOptions {
   clientApp?: string;
   /** X-Client-Version header. */
   clientVersion?: string;
-  /** X-Inhouse-Docauth header (boolean). Defaults to true on server. */
-  inhouseDocauth?: boolean;
-  /** X-Inhouse-MRZ header. Enable MRZ validation. */
-  mrzValidation?: boolean;
 }
 
 /** A file to be uploaded as multipart/form-data. */
@@ -56,72 +52,127 @@ export interface EndSessionRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Video types
-// ---------------------------------------------------------------------------
-
-export interface ProcessVideoInput {
-  video: Buffer | Readable;
-  videoName: string;
-  phrase: string;
-  vocabulary?: string;
-  trigger?: string;
-}
-
-// ---------------------------------------------------------------------------
 // Enrollment types
 // ---------------------------------------------------------------------------
 
 export interface EnrollFaceInput {
+  /** Opaque, customer-provided identity key. */
+  userId: string;
   face: Buffer | Readable;
   fileName: string;
+  /** Set true if the face image is from a document. */
   isDocument?: boolean;
 }
 
-export interface VoiceFile {
+export interface EnrollVoiceInput {
+  /** Opaque, customer-provided identity key. */
+  userId: string;
+  voice: Buffer | Readable;
   fileName: string;
-  content: Buffer | Readable;
+  /** The phrase spoken in the recording. */
+  phrase: string;
+  vocabulary?: string;
 }
 
-export interface EnrollVoiceInput {
-  files: VoiceFile[];
-  phrases: string[];
+// ---------------------------------------------------------------------------
+// Verification types
+// ---------------------------------------------------------------------------
+
+export interface LivenessInput {
+  /** Opaque, customer-provided identity key. */
+  userId: string;
+  video: Buffer | Readable;
+  fileName: string;
+  phrase: string;
   vocabulary?: string;
+  /** Contextual trigger event name (e.g. "authentication"). */
+  trigger?: string;
+  /** Session ID for combined scoring. */
+  sessionId?: string;
+  /** Services to skip from the pipeline. */
+  excludeServices?: VerificationServiceName[];
+}
+
+export interface VerifyInput {
+  /** Opaque, customer-provided identity key. */
+  userId: string;
+  /** Video (face) or audio/video (voice) file. Omit when useSessionVideo is true. */
+  media?: Buffer | Readable;
+  fileName?: string;
+  phrase: string;
+  vocabulary?: string;
+  /** Session ID for combined scoring / session-video reuse. */
+  sessionId?: string;
+  /** Reuse the video captured earlier in the session. Requires sessionId. */
+  useSessionVideo?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Face-match types
+// ---------------------------------------------------------------------------
+
+export interface FaceMatchInput {
+  /** Opaque, customer-provided identity key. */
+  userId: string;
+  referenceImage: Buffer | Readable;
+  referenceName: string;
+  /** Live capture to match. Omit when useSessionVideo is true. */
+  video?: Buffer | Readable;
+  videoName?: string;
+  sessionId?: string;
+  /** Reuse the video captured earlier in the session. Requires sessionId. */
+  useSessionVideo?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // DocAuth types
 // ---------------------------------------------------------------------------
 
-export interface MRZValidation {
-  has_mrz: boolean;
-  raw_mrz?: string;
-  check_digits_valid: boolean;
-  fields_match: boolean;
-  discrepancies?: string[];
-  validation_performed: boolean;
+export interface DocAuthInput {
+  document: Buffer | Readable;
+  fileName: string;
+  sessionId?: string;
+  /** Document authenticity provider; defaults to the project configuration. */
+  provider?: "inhouse" | "idscan";
+  /** MRZ extraction provider; defaults to the project configuration. */
+  mrzProvider?: "inhouse" | "idscan";
 }
 
 export interface DocAuthInfo {
-  document_type: string;
-  country_code: string;
-  nationality_code: string;
-  nationality_name: string;
-  sex: string;
-  first_name: string;
-  father_name: string;
-  last_name: string;
-  expiry_date: string;
-  document_number: string;
-  birth_date: string;
-  portrait_photo: string;
-  signature: string;
-  document_category: string;
-  issuing_state: string;
-  front_document_type_id: string;
-  contains_rfid: boolean;
-  face_image_base64?: string;
+  first_name?: string;
+  last_name?: string;
+  birth_date?: string;
+  document_number?: string;
+  expiry_date?: string;
+  country_code?: string;
+  document_category?: string;
   current_result?: string;
-  mrz_validation?: MRZValidation;
+  /** Base64-encoded portrait extracted from the document. */
+  portrait_photo?: string;
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Deepfake types
+// ---------------------------------------------------------------------------
+
+export interface DeepfakeInput {
+  /** Opaque, customer-provided identity key. */
+  userId: string;
+  video: Buffer | Readable;
+  fileName: string;
+  sessionId?: string;
+}
+
+export interface DeepfakeCheck {
+  id: string;
+  status: string; // pending | processing | completed | failed
+  score?: number;
+  prediction?: string;
+  message?: string;
+  created_at?: number; // unix seconds
+  completed_at?: number; // unix seconds
+  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,33 +185,6 @@ export interface ConsentApproval {
   user_id: string;
   is_approved: boolean;
   created_at: string;
-}
-
-// ---------------------------------------------------------------------------
-// Image types
-// ---------------------------------------------------------------------------
-
-export interface ImageUploadResponse {
-  url: string;
-}
-
-export interface ImageGetResponse {
-  url: string;
-}
-
-// ---------------------------------------------------------------------------
-// AVF types
-// ---------------------------------------------------------------------------
-
-export interface AVFInferenceResponse {
-  request_id: string;
-  status: string;
-}
-
-export interface AVFStatusResponse {
-  request_id: string;
-  status: string;
-  result?: unknown;
 }
 
 // ---------------------------------------------------------------------------
