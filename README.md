@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 
-Node.js / TypeScript SDK for the [Biometry](https://biometrysolutions.com) identity verification platform.
+Node.js / TypeScript SDK for the [Biometry](https://biometrysolutions.com) identity verification platform. It calls the Biometry API v2 (`/api-gateway/v2`).
 
 ## Installation
 
@@ -23,125 +23,113 @@ const sessionId = await client.sessions.start();
 console.log("Session started:", sessionId);
 ```
 
+Every biometric call takes a `userId`: your own opaque, stable key for the end user (not their name or email).
+
 ## Full Verification Flow
 
-A typical identity verification session includes starting a session, collecting
-consent, authenticating documents, enrolling a face, processing a video, running
-face match, and ending the session.
+Enroll the user's face, then verify them in a session: liveness on a video, face verification on the same video, and a face match against their document.
 
 ```typescript
-import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { BiometryClient } from "@namadgi/biometry";
 
-const client = new BiometryClient("your-api-key", {
-  userFullname: "John Doe",
-});
+const client = new BiometryClient("your-api-key");
+const userId = "user-123";
+const phrase = "one two three four five six seven";
 
-// 1. Start session
+// 1. Enroll the face. Enrollment needs the user's authorization and
+//    storage consent (see Consent below).
+await client.enrollment.face({ userId, face: readFileSync("face.jpg"), fileName: "face.jpg" });
+
+// 2. Start a session
 const sessionId = await client.sessions.start();
 
-const opts = { sessionId };
+// 3. Check the identity document
+const passport = readFileSync("passport.jpg");
+await client.docAuth.check({ document: passport, fileName: "passport.jpg", sessionId });
 
-// 2. Approve consent
-await client.consents.approve("consent-id", "user-id", opts);
-
-// 3. Document authentication
-const docImage = await readFile("passport.jpg");
-const docResult = await client.docAuth.check(docImage, "passport.jpg", opts);
-console.log("DocAuth score:", docResult.score);
-
-// 4. Enroll face (from document photo)
-const faceImage = await readFile("face.jpg");
-const enrollResult = await client.enrollment.face(
-  { face: faceImage, fileName: "face.jpg", isDocument: true },
-  opts,
-);
-console.log("Enroll score:", enrollResult.score);
-
-// 5. Process video
-const video = await readFile("verification.mp4");
-const videoResult = await client.video.process(
-  { video, videoName: "verification.mp4", phrase: "my voice is my password" },
-  opts,
-);
-console.log("Video score:", videoResult.score);
-
-// 6. Face match with session video
-const matchResult = await client.faceMatch.matchWithSessionVideo(
-  faceImage,
-  "face.jpg",
+// 4. Liveness on a video of the user reading the challenge phrase
+await client.verification.liveness({
+  userId,
+  video: readFileSync("selfie.mp4"),
+  fileName: "selfie.mp4",
+  phrase,
   sessionId,
-  opts,
-);
-console.log("Match score:", matchResult.score);
+});
 
-// 7. End session
-await client.sessions.end(sessionId, { phone_number: "+1234567890" });
+// 5. Face verification on the same video
+await client.verification.faceVerify({ userId, phrase, sessionId, useSessionVideo: true });
+
+// 6. Face match: document photo against the session video
+const match = await client.faceMatch.match({
+  userId,
+  referenceImage: passport,
+  referenceName: "passport.jpg",
+  sessionId,
+  useSessionVideo: true,
+});
+console.log("Face match decision:", match.decision?.status);
+
+// 7. End the session
+await client.sessions.end(sessionId);
 ```
+
+In a session, face verification and face match must use the liveness media: the same file, or `useSessionVideo`.
+
+## Consent
+
+Face and voice enrollment and `images.upload()` need the user's **authorization** and **storage** consent, recorded with `PUT /api-gateway/v2/users/{user_id}/consents`.
+
+`consents.approve()` and `consents.myApprovals()` manage your project's custom consent templates. They do **not** unlock enrollment.
 
 ## Services
 
-| Service | Method | Description |
-|---------|--------|-------------|
-| `sessions` | `start(opts?)` | Start a new biometric session |
-| `sessions` | `end(id, req?, opts?)` | End a session |
-| `consents` | `approve(consentId, userId, opts?)` | Approve a custom consent |
-| `consents` | `myApprovals(userId, opts?)` | List consent approvals for a user |
-| `docAuth` | `check(document, fileName, opts?)` | Authenticate a document image |
-| `enrollment` | `face(input, opts?)` | Enroll a face image |
-| `enrollment` | `voice(input, opts?)` | Enroll voice recordings |
-| `video` | `process(input, opts?)` | Process a video for biometric verification |
-| `faceMatch` | `match(image, imageName, video, videoName, opts?)` | Match faces from image and video |
-| `faceMatch` | `matchWithSessionVideo(image, imageName, sessionId, opts?)` | Match face against session video |
-| `images` | `upload(email, image, fileName, opts?)` | Upload a face image |
-| `images` | `get(email, opts?)` | Retrieve an image URL |
-| `avf` | `startInference(video, videoName, opts?)` | Submit video for anti-forgery analysis |
-| `avf` | `checkStatus(requestId, opts?)` | Check AVF inference status |
-| `transactions` | `list(req, opts?)` | List transactions with filters |
-| `transactions` | `count(req, opts?)` | Count transactions matching filters |
-| `transactions` | `getBySession(sessionId, opts?)` | Get all transactions for a session |
-| `transactions` | `getSamples(id, opts?)` | Get sample data for a transaction |
-| `transactions` | `updateTags(id, tags, opts?)` | Update tags on a transaction |
-| `transactions` | `flag(id, flag, opts?)` | Set fraud flag on a transaction |
-| `apiKeys` | `mint(opts?)` | Create a new API key |
-| `apiKeys` | `revoke(keyId, opts?)` | Revoke an API key |
-| `apiKeys` | `info(opts?)` | Get current API key info |
+| Service | Methods | API v2 |
+|---------|---------|--------|
+| `sessions` | `start(opts?)`, `end(id, req?, opts?)` | `/v2/sessions` |
+| `verification` | `liveness(input)`, `faceVerify(input)`, `voiceVerify(input)` | `/v2/liveness`, `/v2/face-verify`, `/v2/voice-verify` |
+| `enrollment` | `face(input)`, `voice(input)` | `/v2/enrollments/face`, `/v2/enrollments/voice` |
+| `faceMatch` | `match(input)` | `/v2/face-match` |
+| `docAuth` | `check(input)` | `/v2/documents/check` |
+| `deepfake` | `submit(input)`, `status(requestId)` | `/v2/deepfake/checks` |
+| `images` | `upload(userId, image, fileName)`, `get(userId)` | `/v2/users/{user_id}/reference-image` |
+| `consents` | `approve(consentId, userId)`, `myApprovals(userId)` | `/v2/consents` (custom templates) |
+| `transactions` | `list`, `count`, `getBySession`, `getSamples`, `updateTags`, `flag` | `/api-transactions` (not part of v2) |
+| `apiKeys` | `mint`, `revoke`, `info` | `/api-projects` (not part of v2) |
+
+`LivenessInput.excludeServices` skips checks by name; use the `VerificationServices` constants.
 
 ## Per-Request Options
 
-Every service method accepts an optional `CallOptions` object as the last
-parameter to override headers on a per-request basis:
+Every service method accepts an optional `CallOptions` object as the last parameter, for request metadata headers:
 
 ```typescript
 interface CallOptions {
-  sessionId?: string;        // X-Session-ID
-  fullname?: string;         // X-User-Fullname
-  deviceInfo?: string;       // X-Device-Info (JSON string)
-  geoLocation?: string;      // X-Geo-Location (JSON string)
-  requestTags?: string;      // X-Request-Tags (comma-separated)
-  clientApp?: string;        // X-Client-App
-  clientVersion?: string;    // X-Client-Version
-  inhouseDocauth?: boolean;  // X-Inhouse-Docauth
-  mrzValidation?: boolean;   // X-Inhouse-MRZ
-  actionTrigger?: string;    // X-Action-Trigger
+  deviceInfo?: string;    // X-Device-Info (JSON string)
+  geoLocation?: string;   // X-Geo-Location (JSON string)
+  requestTags?: string;   // X-Request-Tags (comma-separated)
+  clientApp?: string;     // X-Client-App
+  clientVersion?: string; // X-Client-Version
 }
 ```
 
-## Response Headers
+User, session and trigger are fields on the input objects, not headers.
 
-Endpoints that return a `BiometryResponse` expose useful response headers:
+## Responses
+
+Calls that return a `BiometryResponse` carry the API v2 envelope `{ data, decision, meta }`:
 
 ```typescript
-const result = await client.video.process(input, opts);
+const result = await client.verification.liveness(input);
 
-result.requestId;       // X-Request-Id — unique request identifier
-result.autoEnrolled;    // X-Auto-Enroll — true if auto-enrollment occurred
-result.removedServices; // X-Removed-Services — true if services were dropped
+result.decision;  // { status, score, reasons }; undefined when no scoring system applies
+result.data;      // endpoint-specific payload
+result.requestId; // request trace ID
 ```
 
 ## Error Handling
 
-All API errors throw a `BiometryAPIError` with the HTTP status code and message:
+API errors throw a `BiometryAPIError` with the HTTP status, the v2 error code and the message:
 
 ```typescript
 import {
@@ -161,8 +149,7 @@ try {
   } else if (isNotFound(err)) {
     console.error("Resource not found");
   } else if (err instanceof BiometryAPIError) {
-    console.error(`API error ${err.statusCode}: ${err.message}`);
-    console.error("Raw body:", err.rawBody);
+    console.error(`API error ${err.statusCode} ${err.code}: ${err.message}`);
   }
 }
 ```
