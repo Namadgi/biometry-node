@@ -37,18 +37,21 @@ const client = new BiometryClient("your-api-key");
 const userId = "user-123";
 const phrase = "one two three four five six seven";
 
-// 1. Enroll the face. Enrollment needs the user's authorization and
-//    storage consent (see Consent below).
+// 1. Record the user's consent (collected in your app). Enrollment needs
+//    both authorization and storage consent; give() records both by default.
+await client.consents.give(userId);
+
+// 2. Enroll the face
 await client.enrollment.face({ userId, face: readFileSync("face.jpg"), fileName: "face.jpg" });
 
-// 2. Start a session
+// 3. Start a session
 const sessionId = await client.sessions.start();
 
-// 3. Check the identity document
+// 4. Check the identity document
 const passport = readFileSync("passport.jpg");
 await client.docAuth.check({ document: passport, fileName: "passport.jpg", sessionId });
 
-// 4. Liveness on a video of the user reading the challenge phrase
+// 5. Liveness on a video of the user reading the challenge phrase
 await client.verification.liveness({
   userId,
   video: readFileSync("selfie.mp4"),
@@ -57,10 +60,10 @@ await client.verification.liveness({
   sessionId,
 });
 
-// 5. Face verification on the same video
+// 6. Face verification on the same video
 await client.verification.faceVerify({ userId, phrase, sessionId, useSessionVideo: true });
 
-// 6. Face match: document photo against the session video
+// 7. Face match: document photo against the session video
 const match = await client.faceMatch.match({
   userId,
   referenceImage: passport,
@@ -70,7 +73,7 @@ const match = await client.faceMatch.match({
 });
 console.log("Face match decision:", match.decision?.status);
 
-// 7. End the session
+// 8. End the session
 await client.sessions.end(sessionId);
 ```
 
@@ -78,7 +81,23 @@ In a session, face verification and face match must use the liveness media: the 
 
 ## Consent
 
-Face and voice enrollment and `images.upload()` need the user's **authorization** and **storage** consent, recorded with `PUT /api-gateway/v2/users/{user_id}/consents`.
+Face and voice enrollment need the user's **authorization** and **storage** consent; `images.upload()` needs authorization consent. Collect the user's agreement in your app, then record it:
+
+```typescript
+// Give both (the default; enrollment needs both)
+let state = await client.consents.give(userId, {
+  sessionId, // optional: shows the consent with this session in the Console
+});
+
+// Withdraw storage consent only; authorization is left unchanged
+state = await client.consents.revoke(userId, { authorization: false });
+
+// Read the current state (both false if the user never gave consent)
+state = await client.consents.status(userId);
+console.log(state.authorization, state.storage);
+```
+
+`give()` and `revoke()` return the state after the change, are safe to repeat, and throw before sending a request if both `authorization` and `storage` are `false`.
 
 `consents.approve()` and `consents.myApprovals()` manage your project's custom consent templates. They do **not** unlock enrollment.
 
@@ -93,6 +112,7 @@ Face and voice enrollment and `images.upload()` need the user's **authorization*
 | `docAuth` | `check(input)` | `/v2/documents/check` |
 | `deepfake` | `submit(input)`, `status(requestId)` | `/v2/deepfake/checks` |
 | `images` | `upload(userId, image, fileName)`, `get(userId)` | `/v2/users/{user_id}/reference-image` |
+| `consents` | `give(userId, change?)`, `revoke(userId, change?)`, `status(userId)` | `/v2/users/{user_id}/consents` |
 | `consents` | `approve(consentId, userId)`, `myApprovals(userId)` | `/v2/consents` (custom templates) |
 | `transactions` | `list`, `count`, `getBySession`, `getSamples`, `updateTags`, `flag` | `/api-transactions` (not part of v2) |
 | `apiKeys` | `mint`, `revoke`, `info` | `/api-projects` (not part of v2) |
