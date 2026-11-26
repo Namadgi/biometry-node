@@ -1,58 +1,49 @@
 import type { IncomingHttpHeaders } from "node:http";
 
+/** Scoring decision computed for a request when a scoring system applies. */
+export interface Decision {
+  status?: string;
+  score?: number;
+  reasons?: string[];
+}
+
+/** Response metadata attached to every API v2 response. */
+export interface ResponseMeta {
+  request_id?: string;
+  message?: string;
+}
+
 /**
- * BiometryResponse is the full API response envelope. Used for endpoints like
- * process-video and match-faces that return scoring data alongside the result.
+ * BiometryResponse is the full API v2 success envelope. Used for verification
+ * endpoints (liveness, face-verify, voice-verify, face-match, documents/check)
+ * that may carry a scoring decision alongside the raw service data.
  */
 export class BiometryResponse {
   public readonly data: unknown;
-  public readonly scoringResult: unknown;
-  public readonly score: number;
-  public readonly decisionReasons: string[];
-  public readonly message: string;
+  public readonly decision?: Decision;
+  public readonly meta: ResponseMeta;
   public readonly headers: IncomingHttpHeaders;
 
   constructor(
-    body: {
-      data?: unknown;
-      scoring_result?: unknown;
-      score?: number;
-      decision_reasons?: string[];
-      message?: string;
-    },
+    body: { data?: unknown; decision?: Decision; meta?: ResponseMeta },
     headers: IncomingHttpHeaders,
   ) {
     this.data = body.data;
-    this.scoringResult = body.scoring_result;
-    this.score = body.score ?? 0;
-    this.decisionReasons = body.decision_reasons ?? [];
-    this.message = body.message ?? "";
+    this.decision = body.decision;
+    this.meta = body.meta ?? {};
     this.headers = headers;
   }
 
-  /** Decode the `data` field into a typed value (JSON parse of raw data). */
+  /** Decode the `data` field into a typed value. */
   decode<T>(): T {
     return this.data as T;
   }
 
-  /** The X-Request-Id response header value. */
+  /**
+   * The request identifier, preferring the envelope meta and falling back to
+   * the X-Request-Id response header.
+   */
   get requestId(): string {
-    return (this.headers["x-request-id"] as string) ?? "";
-  }
-
-  /**
-   * True if the X-Auto-Enroll response header is "true", indicating that
-   * automatic face/voice enrollment was performed.
-   */
-  get autoEnrolled(): boolean {
-    return this.headers["x-auto-enroll"] === "true";
-  }
-
-  /**
-   * True if the X-Removed-Services response header is "true", indicating
-   * some services were dropped due to missing consent.
-   */
-  get removedServices(): boolean {
-    return this.headers["x-removed-services"] === "true";
+    return this.meta.request_id ?? (this.headers["x-request-id"] as string) ?? "";
   }
 }

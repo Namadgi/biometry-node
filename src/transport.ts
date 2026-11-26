@@ -16,7 +16,6 @@ import { BiometryResponse } from "./response.js";
 export interface TransportConfig {
   baseURL: string;
   apiKey: string;
-  userFullname: string;
   userAgent: string;
   timeoutMs: number;
 }
@@ -38,7 +37,12 @@ async function rawRequest(
   path: string,
   headers: Record<string, string>,
   body: Buffer | null,
-): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: string }> {
+): Promise<{
+  statusCode: number;
+  headers: http.IncomingHttpHeaders;
+  body: string;
+  bodyBuffer: Buffer;
+}> {
   const url = new URL(path, cfg.baseURL);
   const isHttps = url.protocol === "https:";
   const mod = isHttps ? https : http;
@@ -48,10 +52,6 @@ async function rawRequest(
     "User-Agent": cfg.userAgent,
     ...headers,
   };
-  if (cfg.userFullname) {
-    // Only set default if not already overridden via call options
-    reqHeaders["X-User-Fullname"] ??= cfg.userFullname;
-  }
   if (body) {
     reqHeaders["Content-Length"] = String(body.length);
   }
@@ -68,10 +68,12 @@ async function rawRequest(
         const chunks: Buffer[] = [];
         res.on("data", (chunk: Buffer) => chunks.push(chunk));
         res.on("end", () => {
+          const buf = Buffer.concat(chunks);
           resolve({
             statusCode: res.statusCode ?? 0,
             headers: res.headers,
-            body: Buffer.concat(chunks).toString("utf-8"),
+            body: buf.toString("utf-8"),
+            bodyBuffer: buf,
           });
         });
         res.on("error", reject);
@@ -93,18 +95,11 @@ async function rawRequest(
 function callOptionHeaders(opts?: CallOptions): Record<string, string> {
   if (!opts) return {};
   const h: Record<string, string> = {};
-  if (opts.fullname !== undefined) h["X-User-Fullname"] = opts.fullname;
-  if (opts.sessionId !== undefined) h["X-Session-ID"] = opts.sessionId;
-  if (opts.actionTrigger !== undefined) h["X-Action-Trigger"] = opts.actionTrigger;
   if (opts.deviceInfo !== undefined) h["X-Device-Info"] = opts.deviceInfo;
   if (opts.geoLocation !== undefined) h["X-Geo-Location"] = opts.geoLocation;
   if (opts.requestTags !== undefined) h["X-Request-Tags"] = opts.requestTags;
   if (opts.clientApp !== undefined) h["X-Client-App"] = opts.clientApp;
   if (opts.clientVersion !== undefined) h["X-Client-Version"] = opts.clientVersion;
-  if (opts.inhouseDocauth !== undefined)
-    h["X-Inhouse-Docauth"] = opts.inhouseDocauth ? "true" : "false";
-  if (opts.mrzValidation)
-    h["X-Inhouse-MRZ"] = "true";
   return h;
 }
 
@@ -192,19 +187,41 @@ export async function doMultipart<T>(
   fields: Record<string, string> | null,
   files: FileUpload[],
   opts?: CallOptions,
+  method = "POST",
 ): Promise<T> {
   const headers = callOptionHeaders(opts);
   const mp = await buildMultipart(fields, files);
   headers["Content-Type"] = mp.contentType;
 
-  const res = await rawRequest(cfg, "POST", path, headers, mp.body);
+  const res = await rawRequest(cfg, method, path, headers, mp.body);
 
   if (res.statusCode >= 400) {
     throw parseAPIError(res.statusCode, res.body);
   }
 
+  if (res.body === "" || res.body === "null") return undefined as T;
+
   const envelope = JSON.parse(res.body);
   return envelope.data as T;
+}
+
+/**
+ * Send a GET request and return the raw response body bytes (for endpoints that
+ * return a non-JSON payload such as an image's octet-stream).
+ */
+export async function doBytes(
+  cfg: TransportConfig,
+  method: string,
+  path: string,
+  opts?: CallOptions,
+): Promise<Buffer> {
+  const headers = callOptionHeaders(opts);
+  const res = await rawRequest(cfg, method, path, headers, null);
+
+  if (res.statusCode >= 400) {
+    throw parseAPIError(res.statusCode, res.body);
+  }
+  return res.bodyBuffer;
 }
 
 /**

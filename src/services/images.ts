@@ -1,38 +1,37 @@
 import type { Readable } from "node:stream";
 import type { TransportConfig } from "../transport.js";
-import { doMultipart, doRaw } from "../transport.js";
-import type { CallOptions, ImageUploadResponse, ImageGetResponse } from "../types.js";
+import { doBytes, doMultipart } from "../transport.js";
+import type { CallOptions } from "../types.js";
 
-const PATH_GATEWAY = "/api-gateway";
+const PATH_V2 = "/api-gateway/v2";
 
-/** ImageService handles face image upload and retrieval. */
+/** ImageService manages a user's reference image (used by face-match). */
 export class ImageService {
   /** @internal */
   constructor(private readonly cfg: TransportConfig) {}
 
-  /** Upload uploads a face image associated with an email. */
+  /**
+   * Upload stores the reference image for the given user. Requires an approved
+   * consent for the user.
+   */
   async upload(
-    email: string,
+    userId: string,
     image: Buffer | Readable,
     fileName: string,
     opts?: CallOptions,
-  ): Promise<ImageUploadResponse> {
-    return doMultipart<ImageUploadResponse>(
+  ): Promise<void> {
+    await doMultipart<void>(
       this.cfg,
-      `${PATH_GATEWAY}/images`,
-      { email },
+      `${PATH_V2}/users/${encodeURIComponent(userId)}/reference-image`,
+      null,
       [{ fieldName: "image", fileName, content: image }],
       opts,
+      "PUT",
     );
   }
 
-  /** Get retrieves the image URL for a given email. */
-  async get(email: string, opts?: CallOptions): Promise<ImageGetResponse> {
-    return doRaw<ImageGetResponse>(
-      this.cfg,
-      "GET",
-      `${PATH_GATEWAY}/images/${email}`,
-      opts,
-    );
+  /** Get downloads the stored reference image bytes for the given user. */
+  async get(userId: string, opts?: CallOptions): Promise<Buffer> {
+    return doBytes(this.cfg, "GET", `${PATH_V2}/users/${encodeURIComponent(userId)}/reference-image`, opts);
   }
 }
