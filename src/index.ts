@@ -28,6 +28,8 @@ export type {
   DeepfakeInput,
   DeepfakeCheck,
   ConsentApproval,
+  ConsentChange,
+  UserConsents,
   TransactionListRequest,
   Transaction,
   TransactionDevice,

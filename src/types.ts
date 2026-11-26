@@ -179,6 +179,26 @@ export interface DeepfakeCheck {
 // Consent types
 // ---------------------------------------------------------------------------
 
+/**
+ * Selects which consents `consents.give` / `consents.revoke` changes. Both
+ * default to `true`; enrollment needs both.
+ */
+export interface ConsentChange {
+  /** Consent to process the user's biometric data. Default `true`. */
+  authorization?: boolean;
+  /** Consent to store the user's biometric data. Default `true`. */
+  storage?: boolean;
+  /** Optional: links the consent to this session, so it shows with the session in the Console. */
+  sessionId?: string;
+}
+
+/** The user's consent state. */
+export interface UserConsents {
+  user_id: string;
+  authorization: boolean;
+  storage: boolean;
+}
+
 export interface ConsentApproval {
   id: string;
   consent_version_id: string;
