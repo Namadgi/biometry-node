@@ -14,7 +14,7 @@ export class ConsentService {
     await doRaw<void>(
       this.cfg,
       "POST",
-      `${PATH_V2}/consents/${consentId}/approve/${userId}`,
+      `${PATH_V2}/consents/${encodeURIComponent(consentId)}/approve/${encodeURIComponent(userId)}`,
       opts,
     );
   }
@@ -24,7 +24,7 @@ export class ConsentService {
     return doRaw<ConsentApproval[]>(
       this.cfg,
       "GET",
-      `${PATH_V2}/consents/my-approvals/${userId}`,
+      `${PATH_V2}/consents/my-approvals/${encodeURIComponent(userId)}`,
       opts,
     );
   }

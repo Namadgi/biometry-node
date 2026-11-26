@@ -21,7 +21,9 @@ export class FaceMatchService {
     const files: FileUpload[] = [
       { fieldName: "reference_image", fileName: input.referenceName, content: input.referenceImage },
     ];
-    if (input.video) {
+    // With useSessionVideo the gateway reuses the session's liveness video
+    // and ignores an uploaded one, so don't upload it.
+    if (input.video && !input.useSessionVideo) {
       files.push({ fieldName: "video", fileName: input.videoName ?? "capture", content: input.video });
     }
     return doMultipartRaw(this.cfg, `${PATH_V2}/face-match`, fields, files, opts);

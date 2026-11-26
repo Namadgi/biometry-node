@@ -17,6 +17,6 @@ export class SessionService {
 
   /** End terminates a session by ID. Pass req to run a SIM-swap check. */
   async end(id: string, req?: EndSessionRequest, opts?: CallOptions): Promise<void> {
-    await doJSON<void>(this.cfg, "POST", `${PATH_V2}/sessions/${id}/end`, req ?? null, opts);
+    await doJSON<void>(this.cfg, "POST", `${PATH_V2}/sessions/${encodeURIComponent(id)}/end`, req ?? null, opts);
   }
 }

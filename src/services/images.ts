@@ -22,7 +22,7 @@ export class ImageService {
   ): Promise<void> {
     await doMultipart<void>(
       this.cfg,
-      `${PATH_V2}/users/${userId}/reference-image`,
+      `${PATH_V2}/users/${encodeURIComponent(userId)}/reference-image`,
       null,
       [{ fieldName: "image", fileName, content: image }],
       opts,
@@ -32,6 +32,6 @@ export class ImageService {
 
   /** Get downloads the stored reference image bytes for the given user. */
   async get(userId: string, opts?: CallOptions): Promise<Buffer> {
-    return doBytes(this.cfg, "GET", `${PATH_V2}/users/${userId}/reference-image`, opts);
+    return doBytes(this.cfg, "GET", `${PATH_V2}/users/${encodeURIComponent(userId)}/reference-image`, opts);
   }
 }
