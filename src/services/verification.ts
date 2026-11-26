@@ -58,7 +58,9 @@ export class VerificationService {
       session_id: input.sessionId,
       use_session_video: input.useSessionVideo,
     });
-    const files: FileUpload[] = input.media
+    // With useSessionVideo the gateway reuses the session's liveness video
+    // and ignores an uploaded one, so don't upload it.
+    const files: FileUpload[] = input.media && !input.useSessionVideo
       ? [{ fieldName: fileField, fileName: input.fileName ?? "capture", content: input.media }]
       : [];
     return doMultipartRaw(this.cfg, `${PATH_V2}${path}`, fields, files, opts);

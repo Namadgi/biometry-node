@@ -24,6 +24,6 @@ export class DeepfakeService {
 
   /** Status retrieves the current state and results of a deepfake check. */
   async status(requestId: string, opts?: CallOptions): Promise<DeepfakeCheck> {
-    return doRaw<DeepfakeCheck>(this.cfg, "GET", `${PATH_V2}/deepfake/checks/${requestId}`, opts);
+    return doRaw<DeepfakeCheck>(this.cfg, "GET", `${PATH_V2}/deepfake/checks/${encodeURIComponent(requestId)}`, opts);
   }
 }
